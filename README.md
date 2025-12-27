@@ -152,8 +152,8 @@ The frontend will run on `http://localhost:3000`
 
 After the backend starts, a default admin user is automatically created:
 
-- **Email**: admin@guraneza.com
-- **Password**: Admin@123456
+- **Email**: byiringirobenitg@gmail.com
+- **Password**: guraneza123
 
 ⚠️ **Important**: Change these credentials after first login in production!
 
