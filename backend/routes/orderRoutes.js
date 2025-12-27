@@ -1,0 +1,325 @@
+const express = require('express');
+const router = express.Router();
+const Order = require('../models/Order');
+const Cart = require('../models/Cart');
+const Product = require('../models/Product');
+const SellerProfile = require('../models/SellerProfile');
+const { authenticateToken } = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
+const { sendOrderConfirmationEmail } = require('../utils/emailService');
+
+/**
+ * Calculate shipping fee based on city
+ */
+const calculateShippingFee = (city) => {
+    const shippingRates = {
+        'Kigali': 2000,
+        'Huye': 5000,
+        'Musanze': 5000,
+        'Rubavu': 6000,
+        'Rusizi': 7000
+    };
+
+    return shippingRates[city] || 5000; // Default 5000 RWF
+};
+
+/**
+ * @route   POST /api/orders
+ * @desc    Create order from cart
+ * @access  Private (Customer)
+ */
+router.post('/', authenticateToken, requireRole('customer'), async (req, res) => {
+    try {
+        const { shippingInfo, paymentMethod } = req.body;
+
+        // Validate shipping info
+        if (!shippingInfo || !shippingInfo.fullName || !shippingInfo.phone ||
+            !shippingInfo.city || !shippingInfo.addressLine) {
+            return res.status(400).json({
+                success: false,
+                message: 'Complete shipping information is required'
+            });
+        }
+
+        // Get user's cart
+        const cart = await Cart.findOne({ userId: req.user.userId }).populate('items.productId');
+
+        if (!cart || cart.items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cart is empty'
+            });
+        }
+
+        // Verify stock availability and prepare order items
+        const orderItems = [];
+
+        for (const item of cart.items) {
+            const product = await Product.findById(item.productId._id);
+
+            if (!product) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Product ${item.productId.name} not found`
+                });
+            }
+
+            if (product.stock < item.quantity) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Insufficient stock for ${product.name}. Only ${product.stock} available`
+                });
+            }
+
+            orderItems.push({
+                productId: product._id,
+                sellerId: product.sellerId,
+                productName: product.name,
+                quantity: item.quantity,
+                priceAtPurchase: product.price
+            });
+
+            // Reduce stock
+            product.stock -= item.quantity;
+            await product.save();
+        }
+
+        // Calculate totals
+        const subtotal = cart.calculateSubtotal();
+        const shippingFee = calculateShippingFee(shippingInfo.city);
+        const totalPrice = subtotal + shippingFee;
+
+        // Create order
+        const order = new Order({
+            customerId: req.user.userId,
+            items: orderItems,
+            subtotal,
+            shippingFee,
+            totalPrice,
+            paymentMethod,
+            shipping: {
+                fullName: shippingInfo.fullName,
+                phone: shippingInfo.phone,
+                city: shippingInfo.city,
+                addressLine: shippingInfo.addressLine,
+                status: 'NOT_SHIPPED'
+            }
+        });
+
+        await order.save();
+
+        // Clear cart
+        cart.items = [];
+        await cart.save();
+
+        // Send confirmation email
+        try {
+            const user = await require('../models/User').findById(req.user.userId);
+            await sendOrderConfirmationEmail(user.email, {
+                orderId: order._id,
+                totalPrice: order.totalPrice,
+                paymentMethod: order.paymentMethod
+            });
+        } catch (emailError) {
+            console.error('Email error:', emailError);
+            // Continue - order is created
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'Order created successfully',
+            data: { order }
+        });
+    } catch (error) {
+        console.error('Create order error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error creating order',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/orders/my-orders
+ * @desc    Get customer's orders
+ * @access  Private (Customer)
+ */
+router.get('/my-orders', authenticateToken, requireRole('customer'), async (req, res) => {
+    try {
+        const orders = await Order.find({ customerId: req.user.userId })
+            .sort({ createdAt: -1 })
+            .populate('items.productId', 'name imageUrl');
+
+        res.json({
+            success: true,
+            data: { orders }
+        });
+    } catch (error) {
+        console.error('Get orders error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching orders',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/orders/:id
+ * @desc    Get single order details
+ * @access  Private (Customer/Seller/Admin)
+ */
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id)
+            .populate('customerId', 'email')
+            .populate('items.productId', 'name imageUrl');
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        // Check access permissions
+        const isCustomer = req.user.userId.toString() === order.customerId._id.toString();
+        const isAdmin = req.user.role === 'admin';
+        const isSeller = req.user.role === 'seller' &&
+            order.items.some(item => item.sellerId.toString() === req.user.userId.toString());
+
+        if (!isCustomer && !isAdmin && !isSeller) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied'
+            });
+        }
+
+        // If seller, filter to show only their items
+        let orderData = order.toObject();
+        if (req.user.role === 'seller' && !isAdmin) {
+            orderData.items = orderData.items.filter(
+                item => item.sellerId.toString() === req.user.userId.toString()
+            );
+        }
+
+        res.json({
+            success: true,
+            data: { order: orderData }
+        });
+    } catch (error) {
+        console.error('Get order error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching order',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/orders/seller/my-sales
+ * @desc    Get seller's orders (orders containing their products)
+ * @access  Private (Seller)
+ */
+router.get('/seller/my-sales', authenticateToken, requireRole('seller'), async (req, res) => {
+    try {
+        const orders = await Order.find({ 'items.sellerId': req.user.userId })
+            .sort({ createdAt: -1 })
+            .populate('customerId', 'email')
+            .populate('items.productId', 'name imageUrl');
+
+        // Filter items to show only seller's products
+        const filteredOrders = orders.map(order => {
+            const orderObj = order.toObject();
+            orderObj.items = orderObj.items.filter(
+                item => item.sellerId.toString() === req.user.userId.toString()
+            );
+            return orderObj;
+        });
+
+        res.json({
+            success: true,
+            data: { orders: filteredOrders }
+        });
+    } catch (error) {
+        console.error('Get seller orders error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching orders',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/orders
+ * @desc    Get all orders (Admin only)
+ * @access  Private (Admin)
+ */
+router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const orders = await Order.find()
+            .sort({ createdAt: -1 })
+            .populate('customerId', 'email')
+            .populate('items.productId', 'name imageUrl');
+
+        res.json({
+            success: true,
+            data: { orders }
+        });
+    } catch (error) {
+        console.error('Get all orders error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching orders',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   PATCH /api/orders/:id/status
+ * @desc    Update order status (Admin only)
+ * @access  Private (Admin)
+ */
+router.patch('/:id/status', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const { orderStatus, shippingStatus } = req.body;
+
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        if (orderStatus) {
+            order.orderStatus = orderStatus;
+        }
+
+        if (shippingStatus) {
+            order.shipping.status = shippingStatus;
+        }
+
+        await order.save();
+
+        res.json({
+            success: true,
+            message: 'Order status updated',
+            data: { order }
+        });
+    } catch (error) {
+        console.error('Update order status error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating order status',
+            error: error.message
+        });
+    }
+});
+
+module.exports = router;
