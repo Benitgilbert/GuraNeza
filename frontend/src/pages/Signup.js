@@ -85,7 +85,8 @@ const Signup = () => {
     };
 
     const handleGoogleSignup = () => {
-        window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/google`;
+        // Pass selected role to Google OAuth
+        window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/google?role=${formData.role}`;
     };
 
     return (

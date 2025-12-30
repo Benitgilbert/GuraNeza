@@ -36,6 +36,19 @@ const ProductList = () => {
         'Other'
     ];
 
+    // Sync filters with URL params when they change
+    useEffect(() => {
+        setFilters({
+            search: searchParams.get('search') || '',
+            category: searchParams.get('category') || 'All',
+            minPrice: searchParams.get('minPrice') || '',
+            maxPrice: searchParams.get('maxPrice') || '',
+            sortBy: searchParams.get('sortBy') || 'createdAt',
+            order: searchParams.get('order') || 'desc',
+            page: parseInt(searchParams.get('page')) || 1
+        });
+    }, [searchParams]);
+
     useEffect(() => {
         fetchProducts();
     }, [searchParams]);

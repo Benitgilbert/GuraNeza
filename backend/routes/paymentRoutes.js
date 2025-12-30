@@ -204,16 +204,42 @@ router.post('/stripe/create-intent', authenticateToken, requireRole('customer'),
             });
         }
 
-        // For now, return client secret placeholder
-        // In production, integrate with actual Stripe SDK
-        const clientSecret = `test_${Date.now()}_${orderId}`;
+        // Initialize Stripe
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+        // Create payment intent with Stripe
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(order.totalPrice), // Amount in smallest currency unit (RWF doesn't have decimals)
+            currency: 'rwf', // Rwandan Franc
+            metadata: {
+                orderId: order._id.toString(),
+                customerId: order.customerId.toString(),
+                customerEmail: req.user.email || 'customer@guraneza.com'
+            },
+            description: `GuraNeza Order #${orderId}`,
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+
+        // Update order with Stripe payment details
+        order.paymentDetails = {
+            transactionId: paymentIntent.id,
+            paymentInfo: {
+                provider: 'Stripe',
+                status: 'PENDING',
+                paymentIntentId: paymentIntent.id
+            }
+        };
+        await order.save();
 
         res.json({
             success: true,
             data: {
-                clientSecret,
+                clientSecret: paymentIntent.client_secret,
                 publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-                amount: order.totalPrice
+                amount: order.totalPrice,
+                orderId: order._id
             }
         });
     } catch (error) {
@@ -253,6 +279,140 @@ router.post('/webhook/momo', async (req, res) => {
         res.sendStatus(200);
     } catch (error) {
         console.error('Webhook error:', error);
+        res.sendStatus(500);
+    }
+});
+
+/**
+ * @route   POST /api/payment/stripe/confirm
+ * @desc    Confirm Stripe payment after client completes payment
+ * @access  Private (Customer)
+ */
+router.post('/stripe/confirm', authenticateToken, requireRole('customer'), async (req, res) => {
+    try {
+        const { paymentIntentId, orderId } = req.body;
+
+        if (!paymentIntentId || !orderId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment intent ID and order ID are required'
+            });
+        }
+
+        // Initialize Stripe
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+        // Retrieve payment intent to check status
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+        // Find order
+        const order = await Order.findById(orderId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        // Check if order belongs to user
+        if (order.customerId.toString() !== req.user.userId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied'
+            });
+        }
+
+        // Update order based on payment status
+        if (paymentIntent.status === 'succeeded') {
+            order.paymentStatus = 'PAID';
+            order.orderStatus = 'PAID';
+            order.paymentDetails.paymentDate = new Date();
+            order.paymentDetails.paymentInfo.status = 'SUCCEEDED';
+            await order.save();
+
+            res.json({
+                success: true,
+                message: 'Payment confirmed successfully',
+                data: { order }
+            });
+        } else if (paymentIntent.status === 'requires_payment_method' || paymentIntent.status === 'canceled') {
+            order.paymentStatus = 'FAILED';
+            order.paymentDetails.paymentInfo.status = 'FAILED';
+            await order.save();
+
+            res.status(400).json({
+                success: false,
+                message: 'Payment failed',
+                data: { order }
+            });
+        } else {
+            res.json({
+                success: true,
+                message: 'Payment is being processed',
+                data: {
+                    order,
+                    paymentStatus: paymentIntent.status
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Stripe confirmation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error confirming payment',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   POST /api/payment/webhook/stripe
+ * @desc    Stripe payment webhook (for future use)
+ * @access  Public (Stripe callback)
+ */
+router.post('/webhook/stripe', async (req, res) => {
+    try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        const sig = req.headers['stripe-signature'];
+
+        // Note: In production, you should verify the webhook signature
+        // const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+
+        const event = req.body;
+
+        // Handle the event
+        switch (event.type) {
+            case 'payment_intent.succeeded':
+                const paymentIntent = event.data.object;
+                const orderId = paymentIntent.metadata.orderId;
+
+                const order = await Order.findById(orderId);
+                if (order && order.paymentStatus !== 'PAID') {
+                    order.paymentStatus = 'PAID';
+                    order.orderStatus = 'PAID';
+                    order.paymentDetails.paymentDate = new Date();
+                    order.paymentDetails.paymentInfo.status = 'SUCCEEDED';
+                    await order.save();
+                }
+                break;
+
+            case 'payment_intent.payment_failed':
+                const failedIntent = event.data.object;
+                const failedOrderId = failedIntent.metadata.orderId;
+
+                const failedOrder = await Order.findById(failedOrderId);
+                if (failedOrder) {
+                    failedOrder.paymentStatus = 'FAILED';
+                    failedOrder.paymentDetails.paymentInfo.status = 'FAILED';
+                    await failedOrder.save();
+                }
+                break;
+        }
+
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('Stripe webhook error:', error);
         res.sendStatus(500);
     }
 });

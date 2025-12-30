@@ -38,15 +38,44 @@ const userSchema = new mongoose.Schema({
         sparse: true, // Allows multiple null values
         unique: true
     },
+    // Profile fields
+    firstName: {
+        type: String,
+        trim: true
+    },
+    lastName: {
+        type: String,
+        trim: true
+    },
+    phone: {
+        type: String,
+        trim: true,
+        match: [/^[0-9]{10,15}$/, 'Please enter a valid phone number']
+    },
+    avatar: {
+        type: String, // URL to avatar image
+        default: null
+    },
+    dateOfBirth: {
+        type: Date
+    },
+    address: {
+        street: { type: String, trim: true },
+        city: { type: String, trim: true },
+        state: { type: String, trim: true },
+        country: { type: String, default: 'Rwanda', immutable: true }
+    },
     otp: {
-        code: {
-            type: String,
-            select: false
+        type: {
+            code: {
+                type: String
+            },
+            expires: {
+                type: Date
+            }
         },
-        expires: {
-            type: Date,
-            select: false
-        }
+        select: false, // Hide entire OTP object by default
+        default: undefined
     },
     createdAt: {
         type: Date,

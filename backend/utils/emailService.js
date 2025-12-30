@@ -4,7 +4,7 @@ const nodemailer = require('nodemailer');
  * Create email transporter
  */
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: process.env.EMAIL_SERVICE || 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
@@ -82,6 +82,67 @@ const sendOTPEmail = async (email, otp, purpose = 'password_reset') => {
           </tr>
           
           <!-- Footer -->
+          <tr>
+            <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef;">
+              <p style="color: #6c757d; font-size: 14px; margin: 5px 0;"><strong>GuraNeza</strong> - Rwanda's Premier E-Commerce Platform</p>
+              <p style="color: #6c757d; font-size: 14px; margin: 5px 0;">This is an automated message, please do not reply to this email.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+            `;
+    } else if (purpose === 'login') {
+      subject = '🔑 Login Verification Code - GuraNeza';
+      html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 0;">
+        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px 20px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 700;">🛍️ GuraNeza</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <p style="font-size: 18px; color: #333333; margin-bottom: 20px;">Hello!</p>
+              <p style="font-size: 16px; color: #666666; line-height: 1.6; margin-bottom: 30px;">
+                Someone is trying to log in to your account. Please use the verification code below to complete the login process:
+              </p>
+              <table role="presentation" style="width: 100%; margin: 30px 0;">
+                <tr>
+                  <td align="center" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <div style="color: #ffffff; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Your Login Code</div>
+                    <div style="font-size: 48px; font-weight: 700; color: #ffffff; letter-spacing: 8px; margin: 10px 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);">${otp}</div>
+                    <div style="color: #ffffff; font-size: 14px; margin-top: 10px; opacity: 0.9;">⏰ Valid for 10 minutes</div>
+                  </td>
+                </tr>
+              </table>
+              <table role="presentation" style="width: 100%; margin: 20px 0;">
+                <tr>
+                  <td style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 4px;">
+                    <p style="margin: 0; color: #856404; font-size: 14px;">
+                      <strong>⚠️ Security Notice:</strong> If you didn't attempt to log in, please ignore this email and consider changing your password.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              <p style="font-size: 16px; color: #666666; line-height: 1.6;">
+                For your security, this code will expire in <strong>10 minutes</strong>.
+              </p>
+            </td>
+          </tr>
           <tr>
             <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef;">
               <p style="color: #6c757d; font-size: 14px; margin: 5px 0;"><strong>GuraNeza</strong> - Rwanda's Premier E-Commerce Platform</p>

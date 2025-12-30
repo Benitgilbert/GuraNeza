@@ -26,9 +26,22 @@ router.get('/', optionalAuth, async (req, res) => {
         // Build query
         const query = { isActive: true };
 
-        // Text search
+        // Improved text search with regex for partial matching
         if (search) {
-            query.$text = { $search: search };
+            // Remove extra spaces and split into words
+            const searchTerms = search.trim().replace(/\s+/g, ' ').split(' ');
+
+            // Create regex patterns for each word (case-insensitive, partial match)
+            const regexPatterns = searchTerms.map(term => new RegExp(term, 'i'));
+
+            // Search in both name and description
+            query.$or = [
+                { name: { $in: regexPatterns.map(pattern => pattern) } },
+                { description: { $in: regexPatterns.map(pattern => pattern) } },
+                // Also try matching the full search string
+                { name: new RegExp(search.replace(/\s+/g, '.*'), 'i') },
+                { description: new RegExp(search.replace(/\s+/g, '.*'), 'i') }
+            ];
         }
 
         // Category filter
@@ -96,6 +109,47 @@ router.get('/', optionalAuth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error fetching products',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/products/search/suggestions
+ * @desc    Get search suggestions for autocomplete
+ * @access  Public
+ */
+router.get('/search/suggestions', async (req, res) => {
+    try {
+        const { q } = req.query;
+
+        if (!q || q.trim().length < 2) {
+            return res.json({
+                success: true,
+                data: { suggestions: [] }
+            });
+        }
+
+        // Search for matching products (limit to 5 suggestions)
+        const searchRegex = new RegExp(q.trim().replace(/\s+/g, '.*'), 'i');
+
+        const products = await Product.find({
+            isActive: true,
+            name: searchRegex
+        })
+            .select('name imageUrl price category')
+            .limit(5)
+            .lean();
+
+        res.json({
+            success: true,
+            data: { suggestions: products }
+        });
+    } catch (error) {
+        console.error('Search suggestions error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching suggestions',
             error: error.message
         });
     }

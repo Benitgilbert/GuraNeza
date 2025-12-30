@@ -4,23 +4,33 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const SellerProfile = require('../models/SellerProfile');
+const ShippingSetting = require('../models/ShippingSetting');
 const { authenticateToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { sendOrderConfirmationEmail } = require('../utils/emailService');
 
 /**
- * Calculate shipping fee based on city
+ * Calculate shipping fee based on city (from database)
  */
-const calculateShippingFee = (city) => {
-    const shippingRates = {
-        'Kigali': 2000,
-        'Huye': 5000,
-        'Musanze': 5000,
-        'Rubavu': 6000,
-        'Rusizi': 7000
-    };
+const calculateShippingFee = async (city) => {
+    try {
+        // Try to find rate for specific city
+        let setting = await ShippingSetting.findOne({
+            city: new RegExp(`^${city}$`, 'i'),
+            isActive: true
+        });
 
-    return shippingRates[city] || 5000; // Default 5000 RWF
+        // If not found, get default rate
+        if (!setting) {
+            setting = await ShippingSetting.findOne({ isDefault: true, isActive: true });
+        }
+
+        // Return fee or fallback to 5000
+        return setting ? setting.fee : 5000;
+    } catch (error) {
+        console.error('Error fetching shipping fee:', error);
+        return 5000; // Fallback
+    }
 };
 
 /**
@@ -86,7 +96,7 @@ router.post('/', authenticateToken, requireRole('customer'), async (req, res) =>
 
         // Calculate totals
         const subtotal = cart.calculateSubtotal();
-        const shippingFee = calculateShippingFee(shippingInfo.city);
+        const shippingFee = await calculateShippingFee(shippingInfo.city);
         const totalPrice = subtotal + shippingFee;
 
         // Create order

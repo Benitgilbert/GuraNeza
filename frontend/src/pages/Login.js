@@ -1,152 +1,271 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../utils/api';
-import { login } from '../utils/auth';
+import { setToken, setUser } from '../utils/auth';
 import Header from '../components/Header';
 import './Login.css';
 
 const Login = () => {
     const navigate = useNavigate();
+    const [step, setStep] = useState(1); // 1: Enter email, 2: Enter OTP
     const [formData, setFormData] = useState({
         email: '',
-        password: ''
+        password: '',
+        otp: ''
     });
-    const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     const handleChange = (e) => {
         setFormData({
             ...formData,
             [e.target.name]: e.target.value
         });
-        setError(''); // Clear error on input change
+        setError('');
     };
 
-    const handleSubmit = async (e) => {
+    const handleRequestOTP = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+        setLoading(true);
+
+        try {
+            const response = await api.post('/auth/login/request-otp', {
+                email: formData.email,
+                password: formData.password
+            });
+
+            if (response.data.success) {
+                setSuccess(response.data.message);
+                setStep(2);
+            }
+        } catch (err) {
+            setError(err.message || 'Failed to send OTP');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyOTP = async (e) => {
         e.preventDefault();
         setError('');
         setLoading(true);
 
         try {
-            const response = await api.post('/auth/login', formData);
+            const response = await api.post('/auth/login/verify-otp', {
+                email: formData.email,
+                otp: formData.otp
+            });
 
             if (response.data.success) {
+                const { token, user } = response.data.data;
+
                 // Store token and user data
-                login(response.data.data.token, response.data.data.user);
+                setToken(token);
+                setUser(user);
 
                 // Redirect based on role
-                const role = response.data.data.user.role;
-                if (role === 'admin') {
+                if (user.role === 'admin') {
                     navigate('/admin/dashboard');
-                } else if (role === 'seller') {
+                } else if (user.role === 'seller') {
                     navigate('/seller/dashboard');
                 } else {
                     navigate('/products');
                 }
             }
         } catch (err) {
-            setError(err.message || 'Login failed. Please try again.');
+            setError(err.message || 'Invalid OTP');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResendOTP = async () => {
+        setError('');
+        setSuccess('');
+        setLoading(true);
+
+        try {
+            const response = await api.post('/auth/login/request-otp', {
+                email: formData.email,
+                password: formData.password
+            });
+
+            if (response.data.success) {
+                // Clear the OTP input field
+                setFormData(prev => ({ ...prev, otp: '' }));
+                setSuccess('New OTP sent to your email!');
+            }
+        } catch (err) {
+            setError(err.message || 'Failed to resend OTP');
         } finally {
             setLoading(false);
         }
     };
 
     const handleGoogleLogin = () => {
-        // Redirect to Google OAuth
-        window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/google`;
+        window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/google`;
     };
 
     return (
         <>
             <Header />
+
             <div className="auth-container">
                 <div className="auth-card">
-                    <div className="auth-card__header">
-                        <h1 className="auth-card__title">Welcome Back</h1>
-                        <p className="auth-card__subtitle">Login to your GuraNeza account</p>
+                    <div className="auth-header">
+                        <h1 className="auth-title">
+                            {step === 1 ? 'Sign In' : 'Verify OTP'}
+                        </h1>
+                        <p className="auth-subtitle">
+                            {step === 1
+                                ? 'Enter your credentials to receive a login code'
+                                : `We sent a code to ${formData.email}`
+                            }
+                        </p>
                     </div>
 
                     {error && (
-                        <div className="alert alert--error">
-                            {error}
-                        </div>
+                        <div className="alert alert--error">{error}</div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="auth-form">
-                        <div className="form-group">
-                            <label htmlFor="email" className="form-label">Email Address</label>
-                            <input
-                                type="email"
-                                id="email"
-                                name="email"
-                                className="form-input"
-                                placeholder="you@example.com"
-                                value={formData.email}
-                                onChange={handleChange}
-                                required
-                            />
-                        </div>
+                    {success && (
+                        <div className="alert alert--success">{success}</div>
+                    )}
 
-                        <div className="form-group">
-                            <label htmlFor="password" className="form-label">Password</label>
-                            <input
-                                type="password"
-                                id="password"
-                                name="password"
-                                className="form-input"
-                                placeholder="Enter your password"
-                                value={formData.password}
-                                onChange={handleChange}
-                                required
-                            />
-                        </div>
+                    {step === 1 ? (
+                        <form onSubmit={handleRequestOTP} className="auth-form">
+                            <div className="form-group">
+                                <label htmlFor="email" className="form-label">Email Address</label>
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    className="form-input"
+                                    placeholder="you@example.com"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    required
+                                    autoFocus
+                                />
+                            </div>
 
-                        <div className="auth-form__forgot">
-                            <Link to="/forgot-password" className="text-primary">
-                                Forgot password?
-                            </Link>
-                        </div>
+                            <div className="form-group">
+                                <label htmlFor="password" className="form-label">Password</label>
+                                <input
+                                    type="password"
+                                    id="password"
+                                    name="password"
+                                    className="form-input"
+                                    placeholder="Enter your password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
 
-                        <button
-                            type="submit"
-                            className="btn btn--primary btn--full btn--lg"
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <span className="flex items-center justify-center gap-sm">
-                                    <div className="spinner spinner--sm"></div>
-                                    Logging in...
-                                </span>
-                            ) : (
-                                'Login'
-                            )}
-                        </button>
-                    </form>
+                            <button
+                                type="submit"
+                                className="btn btn--primary btn--full"
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <span className="flex items-center justify-center gap-sm">
+                                        <div className="spinner spinner--sm"></div>
+                                        Sending OTP...
+                                    </span>
+                                ) : (
+                                    '📧 Send Login Code'
+                                )}
+                            </button>
 
-                    <div className="auth-divider">
-                        <span>OR</span>
-                    </div>
+                            <div className="auth-divider">
+                                <span>or</span>
+                            </div>
 
-                    <button
-                        type="button"
-                        className="btn btn--secondary btn--full"
-                        onClick={handleGoogleLogin}
-                    >
-                        <svg className="google-icon" viewBox="0 0 24 24" width="20" height="20">
-                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                        </svg>
-                        Continue with Google
-                    </button>
+                            <button
+                                type="button"
+                                className="btn btn--google btn--full"
+                                onClick={handleGoogleLogin}
+                            >
+                                <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                                    <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
+                                        <path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z" />
+                                        <path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z" />
+                                        <path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z" />
+                                        <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z" />
+                                    </g>
+                                </svg>
+                                Continue with Google
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleVerifyOTP} className="auth-form">
+                            <div className="form-group">
+                                <label htmlFor="otp" className="form-label">Verification Code</label>
+                                <input
+                                    type="text"
+                                    id="otp"
+                                    name="otp"
+                                    className="form-input otp-input"
+                                    placeholder="Enter 6-digit code"
+                                    value={formData.otp}
+                                    onChange={handleChange}
+                                    maxLength="6"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
 
-                    <div className="auth-card__footer">
+                            <button
+                                type="submit"
+                                className="btn btn--primary btn--full"
+                                disabled={loading || formData.otp.length !== 6}
+                            >
+                                {loading ? (
+                                    <span className="flex items-center justify-center gap-sm">
+                                        <div className="spinner spinner--sm"></div>
+                                        Verifying...
+                                    </span>
+                                ) : (
+                                    '✓ Verify & Sign In'
+                                )}
+                            </button>
+
+                            <div className="otp-actions">
+                                <button
+                                    type="button"
+                                    className="text-link"
+                                    onClick={handleResendOTP}
+                                    disabled={loading}
+                                >
+                                    Resend Code
+                                </button>
+                                <button
+                                    type="button"
+                                    className="text-link"
+                                    onClick={() => {
+                                        setStep(1);
+                                        setFormData({ ...formData, password: '', otp: '' });
+                                        setError('');
+                                        setSuccess('');
+                                    }}
+                                >
+                                    Change Email
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    <div className="auth-footer">
                         <p>
                             Don't have an account?{' '}
-                            <Link to="/signup" className="text-primary font-weight-500">
-                                Sign up
-                            </Link>
+                            <Link to="/signup" className="text-link">Sign Up</Link>
+                        </p>
+                        <p>
+                            <Link to="/forgot-password" className="text-link">Forgot Password?</Link>
                         </p>
                     </div>
                 </div>

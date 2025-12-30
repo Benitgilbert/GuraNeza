@@ -19,11 +19,14 @@ const ProductDetail = () => {
         comment: ''
     });
     const [addingToCart, setAddingToCart] = useState(false);
+    const [isInWishlist, setIsInWishlist] = useState(false);
+    const [wishlistLoading, setWishlistLoading] = useState(false);
 
     useEffect(() => {
         fetchProductDetail();
         fetchRelatedProducts();
         fetchReviews();
+        checkWishlistStatus();
     }, [id]);
 
     const fetchProductDetail = async () => {
@@ -112,6 +115,48 @@ const ProductDetail = () => {
             }
         } catch (err) {
             alert(err.message || 'Failed to submit review');
+        }
+    };
+
+    const checkWishlistStatus = async () => {
+        if (!isAuthenticated() || getUserRole() !== 'customer') return;
+
+        try {
+            const response = await api.get('/wishlist');
+            const wishlistItems = response.data.data.wishlist.items || [];
+            const inWishlist = wishlistItems.some(item => item.product._id === id);
+            setIsInWishlist(inWishlist);
+        } catch (err) {
+            console.error('Failed to check wishlist status:', err);
+        }
+    };
+
+    const handleToggleWishlist = async () => {
+        if (!isAuthenticated()) {
+            navigate('/login');
+            return;
+        }
+
+        if (getUserRole() !== 'customer') {
+            alert('Only customers can add items to wishlist');
+            return;
+        }
+
+        setWishlistLoading(true);
+        try {
+            if (isInWishlist) {
+                await api.delete(`/wishlist/${id}`);
+                setIsInWishlist(false);
+                alert('Removed from wishlist');
+            } else {
+                await api.post(`/wishlist/${id}`);
+                setIsInWishlist(true);
+                alert('Added to wishlist!');
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to update wishlist');
+        } finally {
+            setWishlistLoading(false);
         }
     };
 
@@ -230,6 +275,23 @@ const ProductDetail = () => {
                                             </span>
                                         ) : (
                                             '🛒 Add to Cart'
+                                        )}
+                                    </button>
+
+                                    <button
+                                        className="btn btn--secondary btn--lg btn--full"
+                                        onClick={handleToggleWishlist}
+                                        disabled={wishlistLoading}
+                                    >
+                                        {wishlistLoading ? (
+                                            <span className="flex items-center justify-center gap-sm">
+                                                <div className="spinner spinner--sm"></div>
+                                                Loading...
+                                            </span>
+                                        ) : isInWishlist ? (
+                                            '💔 Remove from Wishlist'
+                                        ) : (
+                                            '❤️ Add to Wishlist'
                                         )}
                                     </button>
                                 </div>

@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 import api from '../utils/api';
 import Header from '../components/Header';
+import StripePaymentForm from '../components/StripePaymentForm';
 import './Checkout.css';
+
+// Initialize Stripe - get publishable key from environment or API
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_51SKbJ5BmLq1HvKHEJKnCiDQnbDJF0Y5qEW6Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8');
 
 const Checkout = () => {
     const navigate = useNavigate();
@@ -10,6 +16,9 @@ const Checkout = () => {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [createdOrderId, setCreatedOrderId] = useState(null);
+    const [showCardPayment, setShowCardPayment] = useState(false);
+    const [shippingFee, setShippingFee] = useState(0);
 
     const [shippingInfo, setShippingInfo] = useState({
         fullName: '',
@@ -25,6 +34,25 @@ const Checkout = () => {
     useEffect(() => {
         fetchCart();
     }, []);
+
+    // Fetch shipping rate when city is selected
+    useEffect(() => {
+        const fetchShippingRate = async () => {
+            if (shippingInfo.city) {
+                try {
+                    const response = await api.get(`/shipping/rate/${shippingInfo.city}`);
+                    if (response.data.success) {
+                        setShippingFee(response.data.data.fee);
+                    }
+                } catch (err) {
+                    console.error('Error fetching shipping rate:', err);
+                    setShippingFee(5000); // Fallback to default
+                }
+            }
+        };
+
+        fetchShippingRate();
+    }, [shippingInfo.city]);
 
     const fetchCart = async () => {
         try {
@@ -52,9 +80,8 @@ const Checkout = () => {
     };
 
     const calculateShipping = () => {
-        // Simple shipping calculation - 2000 RWF base + 500 per item
-        if (!cart || !cart.items) return 0;
-        return 2000 + (cart.items.length * 500);
+        // Return current shipping fee from state (fetched from API when city is selected)
+        return shippingInfo.city ? shippingFee : 0;
     };
 
     const calculateTotal = () => {
@@ -75,19 +102,24 @@ const Checkout = () => {
 
         try {
             const response = await api.post('/orders', {
-                shippingInfo,
-                paymentMethod
+                shippingInfo: {
+                    fullName: shippingInfo.fullName,
+                    phone: shippingInfo.phone,
+                    city: shippingInfo.city,
+                    addressLine: shippingInfo.address
+                },
+                paymentMethod: paymentMethod === 'card' ? 'Card' : 'MoMo'
             });
 
             if (response.data.success) {
                 const orderId = response.data.data.order._id;
+                setCreatedOrderId(orderId);
 
                 // If payment method is MoMo, initiate payment
                 if (paymentMethod === 'momo') {
                     try {
                         const paymentResponse = await api.post('/payment/momo/initiate', {
                             orderId,
-                            amount: calculateTotal(),
                             phoneNumber: shippingInfo.phone
                         });
 
@@ -100,16 +132,24 @@ const Checkout = () => {
                         navigate('/orders');
                     }
                 } else {
-                    // For card payments, redirect to orders
-                    alert('Order created successfully!');
-                    navigate('/orders');
+                    // For card payments, show Stripe payment form
+                    setShowCardPayment(true);
                 }
             }
         } catch (err) {
-            setError(err.message || 'Failed to create order');
+            setError(err.response?.data?.message || err.message || 'Failed to create order');
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handleStripeSuccess = (paymentIntent) => {
+        alert(`Payment successful! Order #${createdOrderId} has been placed.`);
+        navigate('/orders');
+    };
+
+    const handleStripeError = (error) => {
+        setError(error.message || 'Payment failed. Please try again.');
     };
 
     if (loading) {
@@ -281,6 +321,20 @@ const Checkout = () => {
                                         </div>
                                     </label>
                                 </div>
+
+                                {/* Show Stripe Card Input Form if card payment selected and order created */}
+                                {showCardPayment && paymentMethod === 'card' && createdOrderId && (
+                                    <div className="card-payment-section">
+                                        <Elements stripe={stripePromise}>
+                                            <StripePaymentForm
+                                                orderId={createdOrderId}
+                                                amount={total}
+                                                onSuccess={handleStripeSuccess}
+                                                onError={handleStripeError}
+                                            />
+                                        </Elements>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

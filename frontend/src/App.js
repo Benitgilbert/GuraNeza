@@ -13,10 +13,30 @@ import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import OrderHistory from './pages/OrderHistory';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminSellers from './pages/admin/AdminSellers';
+import AdminProducts from './pages/admin/AdminProducts';
+import AdminOrders from './pages/admin/AdminOrders';
+import AdminOrderDetail from './pages/admin/AdminOrderDetail';
+import AdminShipping from './pages/admin/AdminShipping';
+import AdminReviews from './pages/admin/AdminReviews';
+import AdminSellerRequests from './pages/admin/AdminSellerRequests';
+import SellerDashboard from './pages/seller/SellerDashboard';
+import SellerProfile from './pages/seller/SellerProfile';
+import SellerProducts from './pages/seller/SellerProducts';
+import SellerOrders from './pages/seller/SellerOrders';
+import ProductForm from './pages/seller/ProductForm';
+import CustomerDashboard from './pages/customer/CustomerDashboard';
+import CustomerProfile from './pages/customer/CustomerProfile';
+import CustomerOrders from './pages/customer/CustomerOrders';
+import CustomerWishlist from './pages/customer/CustomerWishlist';
+import CustomerAddresses from './pages/customer/CustomerAddresses';
+import CustomerSettings from './pages/customer/CustomerSettings';
+import SellerUpgradeRequest from './pages/customer/SellerUpgradeRequest';
+import GoogleAuthCallback from './pages/GoogleAuthCallback';
 
-// Placeholder components - these will be created in future phases
-const SellerDashboard = () => <div className="container mt-xl"><h1>Seller Dashboard (Coming Soon)</h1></div>;
-const AdminDashboard = () => <div className="container mt-xl"><h1>Admin Dashboard (Coming Soon)</h1></div>;
+// Placeholder components
 const NotFound = () => <div className="container mt-xl"><h1>404 - Page Not Found</h1></div>;
 
 // Protected Route Component
@@ -47,6 +67,7 @@ function App() {
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/google/success" element={<GoogleAuthCallback />} />
                 <Route path="/products" element={<ProductList />} />
                 <Route path="/products/:id" element={<ProductDetail />} />
 
@@ -75,6 +96,62 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
+                <Route
+                    path="/customer/dashboard"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerDashboard />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/profile"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerProfile />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/orders"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerOrders />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/wishlist"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerWishlist />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/addresses"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerAddresses />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/settings"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <CustomerSettings />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/customer/seller-request"
+                    element={
+                        <ProtectedRoute requiredRole="customer">
+                            <SellerUpgradeRequest />
+                        </ProtectedRoute>
+                    }
+                />
 
                 {/* Seller Routes */}
                 <Route
@@ -85,6 +162,46 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
+                <Route
+                    path="/seller/profile"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <SellerProfile />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/seller/products"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <SellerProducts />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/seller/orders"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <SellerOrders />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/products/new"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <ProductForm />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/products/:id/edit"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <ProductForm />
+                        </ProtectedRoute>
+                    }
+                />
 
                 {/* Admin Routes */}
                 <Route
@@ -92,6 +209,70 @@ function App() {
                     element={
                         <ProtectedRoute requiredRole="admin">
                             <AdminDashboard />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/users"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminUsers />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/sellers"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminSellers />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/products"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminProducts />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/seller-requests"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminSellerRequests />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/orders"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminOrders />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/orders/:id"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminOrderDetail />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/shipping"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminShipping />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/admin/reviews"
+                    element={
+                        <ProtectedRoute requiredRole="admin">
+                            <AdminReviews />
                         </ProtectedRoute>
                     }
                 />

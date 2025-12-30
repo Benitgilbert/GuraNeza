@@ -7,10 +7,16 @@ passport.use(
         {
             clientID: process.env.GOOGLE_CLIENT_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-            callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback'
+            callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:5000/api/auth/google/callback',
+            passReqToCallback: true // Enable access to req in callback
         },
-        async (accessToken, refreshToken, profile, done) => {
+        async (req, accessToken, refreshToken, profile, done) => {
             try {
+                // Get role from state parameter (passed via query)
+                const desiredRole = req.query.state || 'customer';
+                const validRoles = ['customer', 'seller'];
+                const role = validRoles.includes(desiredRole) ? desiredRole : 'customer';
+
                 // Check if user already exists
                 let user = await User.findOne({ googleId: profile.id });
 
@@ -29,16 +35,27 @@ passport.use(
                     return done(null, user);
                 }
 
-                // Create new user
+                // Create new user with selected role
                 user = new User({
                     email: profile.emails[0].value,
                     googleId: profile.id,
-                    role: 'customer', // Default role
+                    role: role, // Use role from query parameter
                     status: 'active',
                     isVerified: true // Google accounts are pre-verified
                 });
 
                 await user.save();
+
+                // If seller, create seller profile
+                if (role === 'seller') {
+                    const SellerProfile = require('../models/SellerProfile');
+                    await SellerProfile.create({
+                        userId: user._id,
+                        storeName: profile.displayName || 'My Store',
+                        approvalStatus: 'pending'
+                    });
+                }
+
                 return done(null, user);
             } catch (error) {
                 return done(error, null);

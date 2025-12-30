@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const SellerProfile = require('../models/SellerProfile');
+const SellerRequest = require('../models/SellerRequest');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const { authenticateToken } = require('../middleware/auth');
@@ -18,7 +19,7 @@ router.get('/users', authenticateToken, requireRole('admin'), async (req, res) =
 
         res.json({
             success: true,
-            data: { users }
+            data: users
         });
     } catch (error) {
         console.error('Get users error:', error);
@@ -153,7 +154,7 @@ router.get('/sellers', authenticateToken, requireRole('admin'), async (req, res)
 
         res.json({
             success: true,
-            data: { sellers }
+            data: sellers
         });
     } catch (error) {
         console.error('Get sellers error:', error);
@@ -246,15 +247,12 @@ router.get('/stats', authenticateToken, requireRole('admin'), async (req, res) =
         res.json({
             success: true,
             data: {
-                stats: {
-                    totalUsers,
-                    totalSellers,
-                    totalProducts,
-                    totalOrders,
-                    totalRevenue,
-                    pendingSellers
-                },
-                recentOrders
+                totalUsers,
+                totalSellers,
+                totalProducts,
+                totalOrders,
+                revenue: totalRevenue,
+                pendingSellers
             }
         });
     } catch (error) {
@@ -262,6 +260,355 @@ router.get('/stats', authenticateToken, requireRole('admin'), async (req, res) =
         res.status(500).json({
             success: false,
             message: 'Error fetching statistics',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/admin/products
+ * @desc    Get all products from all sellers
+ * @access  Private (Admin)
+ */
+router.get('/products', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const products = await Product.find()
+            .populate('sellerId', 'storeName email')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: products
+        });
+    } catch (error) {
+        console.error('Get products error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching products',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   DELETE /api/admin/products/:id
+ * @desc    Delete any product
+ * @access  Private (Admin)
+ */
+router.delete('/products/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: 'Product not found'
+            });
+        }
+
+        await product.deleteOne();
+
+        res.json({
+            success: true,
+            message: 'Product deleted successfully'
+        });
+    } catch (error) {
+        console.error('Delete product error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting product',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/admin/orders
+ * @desc    Get all orders
+ * @access  Private (Admin)
+ */
+router.get('/orders', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 0;
+
+        let query = Order.find()
+            .populate('customerId', 'email')
+            .populate('items.productId', 'name price')
+            .sort({ createdAt: -1 });
+
+        if (limit > 0) {
+            query = query.limit(limit);
+        }
+
+        const orders = await query;
+
+        res.json({
+            success: true,
+            data: orders
+        });
+    } catch (error) {
+        console.error('Get orders error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching orders',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/admin/orders/:id
+ * @desc    Get single order details
+ * @access  Private (Admin)
+ */
+router.get('/orders/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id)
+            .populate('customerId', 'email name')
+            .populate({
+                path: 'items.productId',
+                select: 'name price imageUrl'
+            })
+            .populate({
+                path: 'items.sellerId',
+                select: 'storeName email'
+            });
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: order
+        });
+    } catch (error) {
+        console.error('Get order details error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching order details',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   PUT /api/admin/orders/:id/status
+ * @desc    Update order status
+ * @access  Private (Admin)
+ */
+router.put('/orders/:id/status', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const { status } = req.body;
+
+        if (!['PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'CANCELLED'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid status'
+            });
+        }
+
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        order.orderStatus = status;
+
+        // Update payment status if order is marked as PAID
+        if (status === 'PAID' && order.paymentStatus !== 'PAID') {
+            order.paymentStatus = 'PAID';
+        }
+
+        // Auto-sync shipping status with order status
+        if (status === 'SHIPPED' || status === 'DELIVERED') {
+            if (status === 'SHIPPED' && order.shipping.status === 'NOT_SHIPPED') {
+                order.shipping.status = 'SHIPPED';
+            } else if (status === 'DELIVERED') {
+                order.shipping.status = 'DELIVERED';
+            }
+        }
+
+        await order.save();
+
+        res.json({
+            success: true,
+            message: 'Order status updated successfully',
+            data: order
+        });
+    } catch (error) {
+        console.error('Update order status error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating order status',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/admin/seller-requests
+ * @desc    Get all seller upgrade requests
+ * @access  Private (Admin)
+ */
+router.get('/seller-requests', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const { status } = req.query;
+
+        const query = {};
+        if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+            query.status = status;
+        }
+
+        const requests = await SellerRequest.find(query)
+            .populate('userId', 'email name')
+            .populate('processedBy', 'email name')
+            .sort({ createdAt: -1 });
+
+        // Count by status
+        const stats = {
+            pending: await SellerRequest.countDocuments({ status: 'pending' }),
+            approved: await SellerRequest.countDocuments({ status: 'approved' }),
+            rejected: await SellerRequest.countDocuments({ status: 'rejected' })
+        };
+
+        res.json({
+            success: true,
+            data: requests,
+            stats
+        });
+    } catch (error) {
+        console.error('Get seller requests error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching seller requests',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   PUT /api/admin/seller-requests/:id/approve
+ * @desc    Approve seller upgrade request
+ * @access  Private (Admin)
+ */
+router.put('/seller-requests/:id/approve', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const sellerRequest = await SellerRequest.findById(id);
+
+        if (!sellerRequest) {
+            return res.status(404).json({
+                success: false,
+                message: 'Seller request not found'
+            });
+        }
+
+        if (sellerRequest.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Request has already been ${sellerRequest.status}`
+            });
+        }
+
+        // Update user role to seller
+        const user = await User.findById(sellerRequest.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        user.role = 'seller';
+        await user.save();
+
+        // Create seller profile
+        const sellerProfile = new SellerProfile({
+            userId: sellerRequest.userId,
+            storeName: sellerRequest.storeName,
+            storeDescription: sellerRequest.storeDescription,
+            phone: sellerRequest.phone,
+            logoUrl: sellerRequest.logoUrl,
+            status: 'active'
+        });
+        await sellerProfile.save();
+
+        // Update request status
+        sellerRequest.status = 'approved';
+        sellerRequest.processedAt = new Date();
+        sellerRequest.processedBy = req.user.userId;
+        await sellerRequest.save();
+
+        res.json({
+            success: true,
+            message: 'Seller request approved successfully',
+            data: {
+                request: sellerRequest,
+                sellerProfile
+            }
+        });
+    } catch (error) {
+        console.error('Approve seller request error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error approving seller request',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   PUT /api/admin/seller-requests/:id/reject
+ * @desc    Reject seller upgrade request
+ * @access  Private (Admin)
+ */
+router.put('/seller-requests/:id/reject', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rejectionReason } = req.body;
+
+        const sellerRequest = await SellerRequest.findById(id);
+
+        if (!sellerRequest) {
+            return res.status(404).json({
+                success: false,
+                message: 'Seller request not found'
+            });
+        }
+
+        if (sellerRequest.status !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Request has already been ${sellerRequest.status}`
+            });
+        }
+
+        // Update request status
+        sellerRequest.status = 'rejected';
+        sellerRequest.rejectionReason = rejectionReason || 'No reason provided';
+        sellerRequest.processedAt = new Date();
+        sellerRequest.processedBy = req.user.userId;
+        await sellerRequest.save();
+
+        res.json({
+            success: true,
+            message: 'Seller request rejected',
+            data: sellerRequest
+        });
+    } catch (error) {
+        console.error('Reject seller request error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error rejecting seller request',
             error: error.message
         });
     }
