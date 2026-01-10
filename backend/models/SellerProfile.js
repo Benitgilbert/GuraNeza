@@ -60,7 +60,6 @@ const sellerProfileSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-sellerProfileSchema.index({ userId: 1 });
 sellerProfileSchema.index({ approvalStatus: 1 });
 
 module.exports = mongoose.model('SellerProfile', sellerProfileSchema);

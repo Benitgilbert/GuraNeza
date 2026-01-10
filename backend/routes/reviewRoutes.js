@@ -32,6 +32,32 @@ router.get('/product/:productId', async (req, res) => {
 });
 
 /**
+ * @route   GET /api/reviews
+ * @desc    Get all reviews (Admin only)
+ * @access  Private (Admin)
+ */
+router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
+    try {
+        const reviews = await Review.find()
+            .populate('userId', 'name email')
+            .populate('productId', 'name')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            data: reviews // frontend expects response.data if it's an array or response.data.data
+        });
+    } catch (error) {
+        console.error('Get all reviews error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching all reviews',
+            error: error.message
+        });
+    }
+});
+
+/**
  * Check if user has purchased and received the product
  */
 const hasUserPurchasedProduct = async (userId, productId) => {

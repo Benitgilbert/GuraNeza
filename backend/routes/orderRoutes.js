@@ -7,7 +7,7 @@ const SellerProfile = require('../models/SellerProfile');
 const ShippingSetting = require('../models/ShippingSetting');
 const { authenticateToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
-const { sendOrderConfirmationEmail } = require('../utils/emailService');
+const { sendOrderConfirmationEmail, sendOrderDeliveredEmail } = require('../utils/emailService');
 
 /**
  * Calculate shipping fee based on city (from database)
@@ -106,7 +106,9 @@ router.post('/', authenticateToken, requireRole('customer'), async (req, res) =>
             subtotal,
             shippingFee,
             totalPrice,
-            paymentMethod,
+            paymentMethod: paymentMethod || 'MoMo', // Default to MoMo if not specified
+            paymentStatus: 'PENDING',
+            orderStatus: 'PENDING',
             shipping: {
                 fullName: shippingInfo.fullName,
                 phone: shippingInfo.phone,
@@ -122,22 +124,46 @@ router.post('/', authenticateToken, requireRole('customer'), async (req, res) =>
         cart.items = [];
         await cart.save();
 
-        // Send confirmation email
-        try {
-            const user = await require('../models/User').findById(req.user.userId);
-            await sendOrderConfirmationEmail(user.email, {
-                orderId: order._id,
-                totalPrice: order.totalPrice,
-                paymentMethod: order.paymentMethod
-            });
-        } catch (emailError) {
-            console.error('Email error:', emailError);
-            // Continue - order is created
-        }
+        // Handle Automatic Payment Confirmation for Sandbox/Testing
+        // Mocking the behavior where payment is initiated and then confirmed after a few seconds
+        setTimeout(async () => {
+            try {
+                const orderToUpdate = await Order.findById(order._id);
+                if (orderToUpdate) {
+                    orderToUpdate.paymentStatus = 'PAID';
+                    orderToUpdate.orderStatus = 'PAID';
+                    orderToUpdate.paymentDetails = {
+                        paymentDate: new Date(),
+                        paymentInfo: {
+                            status: 'SUCCESSFUL',
+                            provider: orderToUpdate.paymentMethod,
+                            mode: 'SANDBOX_AUTO_CONFIRM'
+                        }
+                    };
+                    await orderToUpdate.save();
+                    console.log(`✅ Order ${order._id} automatically confirmed as PAID (Sandbox)`);
+
+                    // Send confirmation email AFTER payment is confirmed
+                    const user = await require('../models/User').findById(req.user.userId);
+                    if (user) {
+                        await sendOrderConfirmationEmail(user.email, {
+                            orderId: orderToUpdate._id,
+                            totalPrice: orderToUpdate.totalPrice,
+                            subtotal: orderToUpdate.subtotal,
+                            shippingFee: orderToUpdate.shippingFee,
+                            paymentMethod: orderToUpdate.paymentMethod,
+                            items: orderToUpdate.items
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error in delayed payment confirmation:', error);
+            }
+        }, 5000); // 5 second delay
 
         res.status(201).json({
             success: true,
-            message: 'Order created successfully',
+            message: 'Order initiated. Payment will be confirmed shortly.',
             data: { order }
         });
     } catch (error) {
@@ -298,7 +324,7 @@ router.patch('/:id/status', authenticateToken, requireRole('admin'), async (req,
     try {
         const { orderStatus, shippingStatus } = req.body;
 
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id).populate('customerId', 'email');
 
         if (!order) {
             return res.status(404).json({
@@ -306,6 +332,8 @@ router.patch('/:id/status', authenticateToken, requireRole('admin'), async (req,
                 message: 'Order not found'
             });
         }
+
+        const oldOrderStatus = order.orderStatus;
 
         if (orderStatus) {
             order.orderStatus = orderStatus;
@@ -316,6 +344,19 @@ router.patch('/:id/status', authenticateToken, requireRole('admin'), async (req,
         }
 
         await order.save();
+
+        // If order status changed to DELIVERED, send delivery email
+        if (orderStatus === 'DELIVERED' && oldOrderStatus !== 'DELIVERED') {
+            try {
+                await sendOrderDeliveredEmail(order.customerId.email, {
+                    orderId: order._id,
+                    shippingInfo: order.shipping
+                });
+                console.log(`✅ Delivery email sent to ${order.customerId.email} for order ${order._id}`);
+            } catch (emailErr) {
+                console.error('❌ Error sending delivery email:', emailErr);
+            }
+        }
 
         res.json({
             success: true,

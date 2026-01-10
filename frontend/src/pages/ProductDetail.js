@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { isAuthenticated, getUserRole } from '../utils/auth';
+import { useCart } from '../context/CartContext';
 import Header from '../components/Header';
 import './ProductDetail.css';
 
 const ProductDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { fetchCartCount } = useCart();
     const [product, setProduct] = useState(null);
     const [relatedProducts, setRelatedProducts] = useState([]);
     const [reviews, setReviews] = useState([]);
@@ -85,6 +87,7 @@ const ProductDetail = () => {
             if (response.data.success) {
                 alert('Product added to cart!');
                 setQuantity(1);
+                fetchCartCount(); // Refresh cart count in header
             }
         } catch (err) {
             alert(err.message || 'Failed to add to cart');

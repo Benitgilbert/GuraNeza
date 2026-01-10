@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../utils/api';
 import { setToken, setUser } from '../utils/auth';
+import { useCart } from '../context/CartContext';
 import Header from '../components/Header';
 import './Login.css';
 
 const Login = () => {
     const navigate = useNavigate();
+    const { fetchCartCount } = useCart();
     const [step, setStep] = useState(1); // 1: Enter email, 2: Enter OTP
     const [formData, setFormData] = useState({
         email: '',
@@ -42,7 +44,19 @@ const Login = () => {
                 setStep(2);
             }
         } catch (err) {
-            setError(err.message || 'Failed to send OTP');
+            if (err.response?.data?.notVerified) {
+                setError(
+                    <span>
+                        Your email is not verified. Please{' '}
+                        <Link to="/verify-email" state={{ email: formData.email }} className="text-primary">
+                            verify your email here
+                        </Link>{' '}
+                        before logging in.
+                    </span>
+                );
+            } else {
+                setError(err.response?.data?.message || 'Failed to send OTP');
+            }
         } finally {
             setLoading(false);
         }
@@ -65,6 +79,9 @@ const Login = () => {
                 // Store token and user data
                 setToken(token);
                 setUser(user);
+
+                // Fetch cart count for the authenticated user
+                await fetchCartCount();
 
                 // Redirect based on role
                 if (user.role === 'admin') {

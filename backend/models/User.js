@@ -31,7 +31,7 @@ const userSchema = new mongoose.Schema({
     },
     isVerified: {
         type: Boolean,
-        default: true // Set to false if you want email verification
+        default: false // Users must verify email via OTP
     },
     googleId: {
         type: String,

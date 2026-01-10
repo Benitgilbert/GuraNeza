@@ -5,18 +5,7 @@ const Order = require('../models/Order');
 const { authenticateToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 
-/**
- * MTN MoMo Payment Configuration
- */
-const MOMO_CONFIG = {
-    subscriptionKey: process.env.MOMO_SUBSCRIPTION_KEY,
-    apiUser: process.env.MOMO_API_USER,
-    apiKey: process.env.MOMO_API_KEY,
-    environment: process.env.MOMO_ENVIRONMENT || 'sandbox',
-    baseURL: process.env.MOMO_ENVIRONMENT === 'production'
-        ? 'https://proxy.momoapi.mtn.com'
-        : 'https://sandbox.momodeveloper.mtn.com'
-};
+const MoMoService = require('../utils/MoMoService');
 
 /**
  * @route   POST /api/payment/momo/initiate
@@ -53,33 +42,15 @@ router.post('/momo/initiate', authenticateToken, requireRole('customer'), async 
             });
         }
 
-        // Generate reference ID
-        const referenceId = `GURANEZA_${Date.now()}_${orderId}`;
-
-        // MTN MoMo Request to Pay
-        const momoResponse = await axios.post(
-            `${MOMO_CONFIG.baseURL}/collection/v1_0/requesttopay`,
-            {
-                amount: order.totalPrice.toString(),
-                currency: 'RWF',
-                externalId: orderId.toString(),
-                payer: {
-                    partyIdType: 'MSISDN',
-                    partyId: phoneNumber
-                },
-                payerMessage: `Payment for GuraNeza Order ${orderId}`,
-                payeeNote: `Order payment from ${req.user.email}`
-            },
-            {
-                headers: {
-                    'X-Reference-Id': referenceId,
-                    'X-Target-Environment': MOMO_CONFIG.environment,
-                    'Ocp-Apim-Subscription-Key': MOMO_CONFIG.subscriptionKey,
-                    'Authorization': `Bearer ${MOMO_CONFIG.apiKey}`,
-                    'Content-Type': 'application/json'
-                }
-            }
+        // Initiate MTN MoMo Request to Pay using MoMoService
+        const momoResult = await MoMoService.requestToPay(
+            order.totalPrice,
+            phoneNumber,
+            orderId,
+            `Payment for GuraNeza Order ${orderId}`
         );
+
+        const referenceId = momoResult.referenceId;
 
         // Update order with payment details
         order.paymentStatus = 'PENDING';
@@ -121,19 +92,9 @@ router.get('/momo/status/:referenceId', authenticateToken, async (req, res) => {
     try {
         const { referenceId } = req.params;
 
-        // Check payment status from MTN MoMo
-        const statusResponse = await axios.get(
-            `${MOMO_CONFIG.baseURL}/collection/v1_0/requesttopay/${referenceId}`,
-            {
-                headers: {
-                    'X-Target-Environment': MOMO_CONFIG.environment,
-                    'Ocp-Apim-Subscription-Key': MOMO_CONFIG.subscriptionKey,
-                    'Authorization': `Bearer ${MOMO_CONFIG.apiKey}`
-                }
-            }
-        );
-
-        const paymentStatus = statusResponse.data.status; // SUCCESSFUL, FAILED, PENDING
+        // Check payment status from MTN MoMo using MoMoService
+        const statusData = await MoMoService.getTransactionStatus(referenceId);
+        const paymentStatus = statusData.status; // SUCCESSFUL, FAILED, PENDING
 
         // Find and update order
         const order = await Order.findOne({ 'paymentDetails.transactionId': referenceId });

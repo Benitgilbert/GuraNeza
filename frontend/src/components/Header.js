@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { isAuthenticated, getUserRole, logout } from '../utils/auth';
+import { useCart } from '../context/CartContext';
 import api from '../utils/api';
 import './Header.css';
 
@@ -8,6 +9,7 @@ const Header = () => {
     const navigate = useNavigate();
     const authenticated = isAuthenticated();
     const userRole = getUserRole();
+    const { cartCount, fetchCartCount, setCartCount } = useCart();
     const [searchQuery, setSearchQuery] = useState('');
     const [showCategories, setShowCategories] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
@@ -29,6 +31,8 @@ const Header = () => {
 
     const handleLogout = () => {
         logout();
+        setCartCount(0);
+        navigate('/');
     };
 
     const handleSearch = (e) => {
@@ -80,6 +84,10 @@ const Header = () => {
 
     // Close dropdown when clicking outside
     useEffect(() => {
+        if (authenticated && userRole === 'customer') {
+            fetchCartCount();
+        }
+
         const handleClickOutside = (event) => {
             if (categoriesRef.current && !categoriesRef.current.contains(event.target)) {
                 setShowCategories(false);
@@ -187,7 +195,12 @@ const Header = () => {
                                 {userRole === 'customer' && (
                                     <>
                                         <Link to="/customer/dashboard" className="header__nav-link">Dashboard</Link>
-                                        <Link to="/cart" className="header__nav-link">Cart</Link>
+                                        <Link to="/cart" className="header__nav-link header__cart-link">
+                                            Cart
+                                            {cartCount > 0 && (
+                                                <span className="header__cart-badge">{cartCount}</span>
+                                            )}
+                                        </Link>
                                         <Link to="/customer/orders" className="header__nav-link">Orders</Link>
                                     </>
                                 )}

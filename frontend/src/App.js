@@ -34,7 +34,9 @@ import CustomerWishlist from './pages/customer/CustomerWishlist';
 import CustomerAddresses from './pages/customer/CustomerAddresses';
 import CustomerSettings from './pages/customer/CustomerSettings';
 import SellerUpgradeRequest from './pages/customer/SellerUpgradeRequest';
+import CompleteSellerSignup from './pages/CompleteSellerSignup';
 import GoogleAuthCallback from './pages/GoogleAuthCallback';
+import VerifyEmail from './pages/VerifyEmail';
 
 // Placeholder components
 const NotFound = () => <div className="container mt-xl"><h1>404 - Page Not Found</h1></div>;
@@ -66,6 +68,7 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/auth/google/success" element={<GoogleAuthCallback />} />
                 <Route path="/products" element={<ProductList />} />
@@ -199,6 +202,14 @@ function App() {
                     element={
                         <ProtectedRoute requiredRole="seller">
                             <ProductForm />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/seller/complete-signup"
+                    element={
+                        <ProtectedRoute requiredRole="seller">
+                            <CompleteSellerSignup />
                         </ProtectedRoute>
                     }
                 />

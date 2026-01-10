@@ -37,29 +37,14 @@ const AdminReviews = () => {
             setLoading(true);
             setError('');
 
-            // Fetch all products with their reviews
-            const response = await api.get('/products');
+            const response = await api.get('/reviews');
             if (response.data.success) {
-                const products = response.data.data.products || [];
-                const allReviews = [];
-
-                // Fetch reviews for each product
-                for (const product of products) {
-                    try {
-                        const reviewsResponse = await api.get(`/products/${product._id}/reviews`);
-                        if (reviewsResponse.data.success && reviewsResponse.data.data) {
-                            const productReviews = reviewsResponse.data.data.map(review => ({
-                                ...review,
-                                productName: product.name,
-                                productId: product._id
-                            }));
-                            allReviews.push(...productReviews);
-                        }
-                    } catch (err) {
-                        console.error(`Error fetching reviews for product ${product._id}:`, err);
-                    }
-                }
-
+                // The backend returns an array of reviews with populated productId and userId
+                const allReviews = response.data.data.map(review => ({
+                    ...review,
+                    productName: review.productId?.name || 'Product Deleted',
+                    productId: review.productId?._id
+                }));
                 setReviews(allReviews);
             } else {
                 setReviews([]);

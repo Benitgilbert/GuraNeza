@@ -4,8 +4,7 @@ const sellerRequestSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
-        index: true
+        required: true
     },
     storeName: {
         type: String,
@@ -33,8 +32,7 @@ const sellerRequestSchema = new mongoose.Schema({
     status: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],
-        default: 'pending',
-        index: true
+        default: 'pending'
     },
     rejectionReason: {
         type: String,
@@ -54,9 +52,6 @@ const sellerRequestSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
-
-// Index for efficient querying
-sellerRequestSchema.index({ userId: 1, status: 1 });
 
 // Prevent duplicate pending requests for same user
 sellerRequestSchema.index({ userId: 1, status: 1 }, {

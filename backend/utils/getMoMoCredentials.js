@@ -7,7 +7,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 
 // YOUR MTN MOMO CREDENTIALS (from screenshot)
-const SUBSCRIPTION_KEY = '0f976e0f867d4620ba511c2cbd4168d0'; // Primary key
+const SUBSCRIPTION_KEY = '964918e7098741708f697016221ce743'; // Primary key from screenshot
 const BASE_URL = 'https://sandbox.momodeveloper.mtn.com';
 
 // Generate a random UUID v4
@@ -69,23 +69,11 @@ async function setupMoMoCredentials() {
         console.log('✅ API Key generated successfully!\n');
 
         // Display credentials
-        console.log('\n═══════════════════════════════════════');
-        console.log('🎉 SUCCESS! Copy these to your .env file:');
-        console.log('═══════════════════════════════════════\n');
-
-        console.log('MOMO_SUBSCRIPTION_KEY=' + SUBSCRIPTION_KEY);
-        console.log('MOMO_API_USER=' + apiUser);
-        console.log('MOMO_API_KEY=' + apiKey);
-        console.log('MOMO_ENVIRONMENT=sandbox');
-
-        console.log('\n═══════════════════════════════════════');
-        console.log('📝 Next steps:');
-        console.log('1. Open backend/.env file');
-        console.log('2. Paste the lines above into the MoMo section');
-        console.log('3. Save the file');
-        console.log('4. Restart your backend server');
-        console.log('5. Test MoMo payment! 🎉');
-        console.log('═══════════════════════════════════════\n');
+        const creds = `MOMO_SUBSCRIPTION_KEY=${SUBSCRIPTION_KEY}\nMOMO_API_USER=${apiUser}\nMOMO_API_KEY=${apiKey}\nMOMO_ENVIRONMENT=sandbox`;
+        require('fs').writeFileSync('momo_creds.txt', creds);
+        console.log('--- CREDENTIALS WRITTEN TO momo_creds.txt ---');
+        console.log(creds);
+        console.log('--- CREDENTIALS END ---');
 
     } catch (error) {
         console.error('\n❌ Error:', error.response?.data || error.message);

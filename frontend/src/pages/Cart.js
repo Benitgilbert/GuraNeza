@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { useCart } from '../context/CartContext';
 import Header from '../components/Header';
 import './Cart.css';
 
 const Cart = () => {
     const navigate = useNavigate();
+    const { fetchCartCount } = useCart();
     const [cart, setCart] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -40,6 +42,7 @@ const Cart = () => {
             const response = await api.put(`/cart/update/${itemId}`, { quantity: newQuantity });
             if (response.data.success) {
                 setCart(response.data.data.cart);
+                fetchCartCount();
             }
         } catch (err) {
             alert(err.message || 'Failed to update quantity');
@@ -58,6 +61,7 @@ const Cart = () => {
             const response = await api.delete(`/cart/remove/${itemId}`);
             if (response.data.success) {
                 setCart(response.data.data.cart);
+                fetchCartCount();
             }
         } catch (err) {
             alert(err.message || 'Failed to remove item');
@@ -73,6 +77,7 @@ const Cart = () => {
             const response = await api.delete('/cart/clear');
             if (response.data.success) {
                 setCart(response.data.data.cart);
+                fetchCartCount();
             }
         } catch (err) {
             alert(err.message || 'Failed to clear cart');

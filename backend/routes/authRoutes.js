@@ -201,9 +201,11 @@ router.post(
                 password,
                 role,
                 status: 'active',
-                isVerified: true
+                isVerified: false // Explicitly false
             });
 
+            // Generate OTP for verification
+            const otpCode = user.generateOTP();
             await user.save();
 
             // If role is seller, create seller profile
@@ -213,29 +215,19 @@ router.post(
                     storeName,
                     description: storeDescription || '',
                     phone,
-                    approvalStatus: 'pending' // Requires admin approval
+                    approvalStatus: 'pending'
                 });
 
                 await sellerProfile.save();
             }
 
-            // Generate token
-            const token = generateToken(user._id);
+            // Send verification OTP email
+            await sendOTPEmail(email, otpCode, 'signup');
 
             res.status(201).json({
                 success: true,
-                message: role === 'seller'
-                    ? 'Seller account created successfully. Awaiting admin approval.'
-                    : 'Account created successfully',
-                data: {
-                    token,
-                    user: {
-                        id: user._id,
-                        email: user.email,
-                        role: user.role,
-                        status: user.status
-                    }
-                }
+                message: 'Account created. Please verify your email with the OTP sent to your inbox.',
+                email: user.email
             });
         } catch (error) {
             console.error('Signup error:', error);
@@ -247,6 +239,62 @@ router.post(
         }
     }
 );
+
+/**
+ * @route   POST /api/auth/verify-signup-otp
+ * @desc    Verify OTP after signup
+ * @access  Public
+ */
+router.post('/verify-signup-otp', [
+    body('email').isEmail().withMessage('Please enter a valid email'),
+    body('otp').notEmpty().withMessage('OTP is required')
+], async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email: email.toLowerCase() }).select('+otp');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        if (user.isVerified) {
+            return res.status(400).json({ success: false, message: 'Account is already verified' });
+        }
+
+        const isValid = user.verifyOTP(otp);
+        if (!isValid) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+        }
+
+        user.isVerified = true;
+        user.clearOTP();
+        await user.save();
+
+        // Generate token for auto-login
+        const token = generateToken(user._id);
+
+        // Prepare user response (exclude sensitive fields)
+        const userResponse = {
+            id: user._id,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            isVerified: user.isVerified
+        };
+
+        res.json({
+            success: true,
+            message: 'Email verified successfully.',
+            data: {
+                token,
+                user: userResponse
+            }
+        });
+    } catch (error) {
+        console.error('Verify signup OTP error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
 
 /**
  * @route   POST /api/auth/login
@@ -280,6 +328,15 @@ router.post(
                 return res.status(401).json({
                     success: false,
                     message: 'Invalid email or password'
+                });
+            }
+
+            // Check if user is verified
+            if (!user.isVerified) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Please verify your email address first. An OTP was sent to your email upon registration.',
+                    notVerified: true
                 });
             }
 
@@ -328,42 +385,6 @@ router.post(
     }
 );
 
-/**
- * @route   GET /api/auth/google
- * @desc    Initiate Google OAuth
- * @access  Public
- */
-router.get(
-    '/google',
-    passport.authenticate('google', {
-        scope: ['profile', 'email']
-    })
-);
-
-/**
- * @route   GET /api/auth/google/callback
- * @desc    Google OAuth callback
- * @access  Public
- */
-router.get(
-    '/google/callback',
-    passport.authenticate('google', {
-        session: false,
-        failureRedirect: `${process.env.FRONTEND_URL}/login?error=google_auth_failed`
-    }),
-    (req, res) => {
-        try {
-            // Generate token
-            const token = generateToken(req.user._id);
-
-            // Redirect to frontend with token
-            res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
-        } catch (error) {
-            console.error('Google callback error:', error);
-            res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
-        }
-    }
-);
 
 /**
  * @route   POST /api/auth/forgot-password

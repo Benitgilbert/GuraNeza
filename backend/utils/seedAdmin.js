@@ -17,8 +17,8 @@ const seedAdmin = async () => {
 
         // Create default admin
         const admin = new User({
-            email: process.env.DEFAULT_ADMIN_EMAIL || 'admin@guraneza.com',
-            password: process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123456',
+            email: process.env.DEFAULT_ADMIN_EMAIL || 'byiringirobenit@gmail.com',
+            password: process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123',
             role: 'admin',
             status: 'active',
             isVerified: true

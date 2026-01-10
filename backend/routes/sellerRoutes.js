@@ -50,12 +50,32 @@ router.put('/profile', authenticateToken, requireRole('seller'), async (req, res
         let sellerProfile = await SellerProfile.findOne({ userId: req.user.userId });
 
         if (!sellerProfile) {
-            return res.status(404).json({
-                success: false,
-                message: 'Seller profile not found'
+            // Create new profile if it doesn't exist (e.g. Google initial signup)
+            if (!storeName || !phone) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Store name and phone are required to create your shop profile'
+                });
+            }
+
+            sellerProfile = new SellerProfile({
+                userId: req.user.userId,
+                storeName,
+                description: description || '',
+                phone,
+                logoUrl: logoUrl || null
+            });
+
+            await sellerProfile.save();
+
+            return res.json({
+                success: true,
+                message: 'Shop profile created successfully',
+                data: sellerProfile
             });
         }
 
+        // Update existing profile
         if (storeName) sellerProfile.storeName = storeName;
         if (description !== undefined) sellerProfile.description = description;
         if (phone) sellerProfile.phone = phone;
@@ -69,10 +89,10 @@ router.put('/profile', authenticateToken, requireRole('seller'), async (req, res
             data: sellerProfile
         });
     } catch (error) {
-        console.error('Update seller profile error:', error);
+        console.error('Update/Create seller profile error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error updating profile',
+            message: 'Error saving profile',
             error: error.message
         });
     }

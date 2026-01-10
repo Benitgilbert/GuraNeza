@@ -7,8 +7,10 @@ import Header from '../components/Header';
 import StripePaymentForm from '../components/StripePaymentForm';
 import './Checkout.css';
 
-// Initialize Stripe - get publishable key from environment or API
-const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_51SKbJ5BmLq1HvKHEJKnCiDQnbDJF0Y5qEW6Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8');
+// Initialize Stripe - get publishable key from environment
+const stripePublishableKey = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY;
+console.log('Stripe Key loaded:', stripePublishableKey ? 'Yes' : 'No');
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
 const Checkout = () => {
     const navigate = useNavigate();
@@ -30,6 +32,14 @@ const Checkout = () => {
     });
 
     const [paymentMethod, setPaymentMethod] = useState('momo');
+    const [momoPhone, setMomoPhone] = useState('');
+
+    // Update momoPhone when shipping phone changes (initial default)
+    useEffect(() => {
+        if (!momoPhone) {
+            setMomoPhone(shippingInfo.phone);
+        }
+    }, [shippingInfo.phone]);
 
     useEffect(() => {
         fetchCart();
@@ -95,11 +105,7 @@ const Checkout = () => {
         });
     };
 
-    const handleSubmitOrder = async (e) => {
-        e.preventDefault();
-        setError('');
-        setSubmitting(true);
-
+    const createOrderRecord = async () => {
         try {
             const response = await api.post('/orders', {
                 shippingInfo: {
@@ -114,13 +120,36 @@ const Checkout = () => {
             if (response.data.success) {
                 const orderId = response.data.data.order._id;
                 setCreatedOrderId(orderId);
+                return { success: true, orderId };
+            }
+            return { success: false, message: 'Failed to create order' };
+        } catch (err) {
+            return {
+                success: false,
+                message: err.response?.data?.message || err.message || 'Failed to create order'
+            };
+        }
+    };
+
+    const handleSubmitOrder = async (e) => {
+        if (e) e.preventDefault();
+        setError('');
+        setSubmitting(true);
+
+        // This function now primarily handles MoMo payment initiation
+        // since Card payment is handled within StripePaymentForm
+        try {
+            const result = await createOrderRecord();
+
+            if (result.success) {
+                const orderId = result.orderId;
 
                 // If payment method is MoMo, initiate payment
                 if (paymentMethod === 'momo') {
                     try {
                         const paymentResponse = await api.post('/payment/momo/initiate', {
                             orderId,
-                            phoneNumber: shippingInfo.phone
+                            phoneNumber: momoPhone || shippingInfo.phone
                         });
 
                         if (paymentResponse.data.success) {
@@ -131,20 +160,19 @@ const Checkout = () => {
                         alert('Order created but payment initiation failed. Please contact support.');
                         navigate('/orders');
                     }
-                } else {
-                    // For card payments, show Stripe payment form
-                    setShowCardPayment(true);
                 }
+            } else {
+                setError(result.message);
             }
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to create order');
+            setError(err.message || 'An unexpected error occurred');
         } finally {
             setSubmitting(false);
         }
     };
 
-    const handleStripeSuccess = (paymentIntent) => {
-        alert(`Payment successful! Order #${createdOrderId} has been placed.`);
+    const handleStripeSuccess = (paymentIntent, orderId) => {
+        alert(`Payment successful! Order #${orderId} has been placed.`);
         navigate('/orders');
     };
 
@@ -304,6 +332,25 @@ const Checkout = () => {
                                         </div>
                                     </label>
 
+                                    {/* MoMo Phone Number Input */}
+                                    {paymentMethod === 'momo' && (
+                                        <div className="momo-payment-field" style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #eee' }}>
+                                            <label htmlFor="momoPhone" className="form-label">MTN MoMo Number *</label>
+                                            <input
+                                                type="tel"
+                                                id="momoPhone"
+                                                className="form-input"
+                                                placeholder="07XXXXXXXX"
+                                                value={momoPhone}
+                                                onChange={(e) => setMomoPhone(e.target.value)}
+                                                required={paymentMethod === 'momo'}
+                                            />
+                                            <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                                                Enter the number you use for MTN Mobile Money.
+                                            </small>
+                                        </div>
+                                    )}
+
                                     <label className="payment-option">
                                         <input
                                             type="radio"
@@ -322,17 +369,23 @@ const Checkout = () => {
                                     </label>
                                 </div>
 
-                                {/* Show Stripe Card Input Form if card payment selected and order created */}
-                                {showCardPayment && paymentMethod === 'card' && createdOrderId && (
-                                    <div className="card-payment-section">
-                                        <Elements stripe={stripePromise}>
-                                            <StripePaymentForm
-                                                orderId={createdOrderId}
-                                                amount={total}
-                                                onSuccess={handleStripeSuccess}
-                                                onError={handleStripeError}
-                                            />
-                                        </Elements>
+                                {/* Show Stripe Card Input Form immediately if card payment selected */}
+                                {paymentMethod === 'card' && (
+                                    <div className="card-payment-section" style={{ marginTop: '1.5rem', padding: '1.5rem', border: '2px solid #e2e8f0', borderRadius: '12px' }}>
+                                        {stripePromise ? (
+                                            <Elements stripe={stripePromise}>
+                                                <StripePaymentForm
+                                                    amount={total}
+                                                    onSuccess={handleStripeSuccess}
+                                                    onError={handleStripeError}
+                                                    createOrder={createOrderRecord}
+                                                />
+                                            </Elements>
+                                        ) : (
+                                            <div className="alert alert--error">
+                                                Stripe is not correctly configured. Please contact support.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -376,20 +429,22 @@ const Checkout = () => {
                                 <span>{total.toLocaleString()} RWF</span>
                             </div>
 
-                            <button
-                                type="submit"
-                                className="btn btn--primary btn--lg btn--full"
-                                disabled={submitting}
-                            >
-                                {submitting ? (
-                                    <span className="flex items-center justify-center gap-sm">
-                                        <div className="spinner spinner--sm"></div>
-                                        Processing...
-                                    </span>
-                                ) : (
-                                    `Place Order - ${total.toLocaleString()} RWF`
-                                )}
-                            </button>
+                            {paymentMethod === 'momo' && (
+                                <button
+                                    type="submit"
+                                    className="btn btn--primary btn--lg btn--full"
+                                    disabled={submitting}
+                                >
+                                    {submitting ? (
+                                        <span className="flex items-center justify-center gap-sm">
+                                            <div className="spinner spinner--sm"></div>
+                                            Processing...
+                                        </span>
+                                    ) : (
+                                        `Place Order - ${total.toLocaleString()} RWF`
+                                    )}
+                                </button>
+                            )}
 
                             <div className="checkout-security">
                                 <span>🔒</span>

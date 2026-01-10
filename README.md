@@ -29,6 +29,7 @@ A full-stack, production-ready multi-vendor e-commerce application built with th
 
 ### ✅ **For Customers**
 - 🔐 Secure authentication (Email/Password + Google OAuth)
+- 📧 **Mandatory email OTP verification** for new accounts
 - 🛒 Multi-vendor shopping cart
 - 💳 Multiple payment methods (MTN MoMo + Stripe)
 - 🔍 Advanced product filtering (category, price range, search)
@@ -48,6 +49,7 @@ A full-stack, production-ready multi-vendor e-commerce application built with th
 - 🖼️ Logo upload (with base64 conversion)
 
 ### ✅ **For Admins**
+- 🛡️ **Admin self-protection safeguards** (prevents self-blocking/role changes)
 - 👥 User management (approve/deactivate/assign roles)
 - 🏪 Seller approval system
 - 📦 Global product management

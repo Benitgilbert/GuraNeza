@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/DashboardLayout';
 import api from '../../utils/api';
+import { getUser } from '../../utils/auth';
 import './admin.css';
 
 const AdminUsers = () => {
+    const currentUser = getUser();
     const [users, setUsers] = useState([]);
     const [filteredUsers, setFilteredUsers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -267,6 +269,8 @@ const AdminUsers = () => {
                                                         style={{ width: 'auto', fontSize: '0.875rem', padding: '0.25rem 0.5rem' }}
                                                         value={user.role}
                                                         onChange={(e) => handleRoleChange(user._id, e.target.value)}
+                                                        disabled={user._id === currentUser?._id || user._id === currentUser?.id}
+                                                        title={user._id === currentUser?._id || user._id === currentUser?.id ? "You cannot change your own role" : ""}
                                                     >
                                                         <option value="customer">Customer</option>
                                                         <option value="seller">Seller</option>
@@ -277,6 +281,8 @@ const AdminUsers = () => {
                                                     <button
                                                         className={`btn btn--sm ${user.status === 'active' ? 'btn--danger' : 'btn--success'}`}
                                                         onClick={() => handleStatusToggle(user._id, user.status)}
+                                                        disabled={user._id === currentUser?._id || user._id === currentUser?.id}
+                                                        title={user._id === currentUser?._id || user._id === currentUser?.id ? "You cannot block yourself" : ""}
                                                     >
                                                         {user.status === 'active' ? '🚫 Block' : '✅ Activate'}
                                                     </button>

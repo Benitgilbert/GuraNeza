@@ -3,15 +3,13 @@ import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import api from '../utils/api';
 import './StripePaymentForm.css';
 
-const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
+const StripePaymentForm = ({ orderId: initialOrderId, amount, onSuccess, onError, createOrder }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [processing, setProcessing] = useState(false);
     const [error, setError] = useState('');
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-
+    const handlePay = async () => {
         if (!stripe || !elements) {
             return;
         }
@@ -20,16 +18,31 @@ const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
         setError('');
 
         try {
-            // Create payment intent
+            let orderId = initialOrderId;
+
+            // 1. If order hasn't been created yet, create it now
+            if (!orderId && createOrder) {
+                const orderResponse = await createOrder();
+                if (!orderResponse || !orderResponse.success) {
+                    throw new Error(orderResponse?.message || 'Failed to create order. Please try again.');
+                }
+                orderId = orderResponse.orderId;
+            }
+
+            if (!orderId) {
+                throw new Error('Order information missing. Please refresh and try again.');
+            }
+
+            // 2. Create payment intent
             const response = await api.post('/payment/stripe/create-intent', { orderId });
 
             if (!response.data.success) {
-                throw new Error(response.data.message || 'Failed to create payment intent');
+                throw new Error(response.data.message || 'Failed to initialize payment');
             }
 
             const { clientSecret } = response.data.data;
 
-            // Confirm card payment
+            // 3. Confirm card payment
             const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
                 clientSecret,
                 {
@@ -43,13 +56,13 @@ const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
                 setError(stripeError.message);
                 onError && onError(stripeError);
             } else if (paymentIntent.status === 'succeeded') {
-                // Confirm payment on backend
+                // 4. Confirm payment on backend
                 await api.post('/payment/stripe/confirm', {
                     paymentIntentId: paymentIntent.id,
                     orderId
                 });
 
-                onSuccess && onSuccess(paymentIntent);
+                onSuccess && onSuccess(paymentIntent, orderId);
             }
         } catch (err) {
             const errorMessage = err.response?.data?.message || err.message || 'Payment failed';
@@ -80,7 +93,7 @@ const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="stripe-payment-form">
+        <div className="stripe-payment-form">
             <div className="card-element-container">
                 <label className="card-element-label">Card Details</label>
                 <div className="card-element-wrapper">
@@ -96,8 +109,9 @@ const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
             )}
 
             <button
-                type="submit"
+                type="button"
                 disabled={!stripe || processing}
+                onClick={handlePay}
                 className="btn btn--primary btn--lg btn--full stripe-submit-btn"
             >
                 {processing ? (
@@ -114,7 +128,7 @@ const StripePaymentForm = ({ orderId, amount, onSuccess, onError }) => {
                 <span>🔒</span>
                 <span>Secured by Stripe</span>
             </div>
-        </form>
+        </div>
     );
 };
 

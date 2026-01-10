@@ -8,6 +8,8 @@ const Order = require('../models/Order');
 const { authenticateToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 
+const { sendOrderDeliveredEmail } = require('../utils/emailService');
+
 /**
  * @route   GET /api/admin/users
  * @desc    Get all users
@@ -104,6 +106,14 @@ router.patch('/users/:id/role', authenticateToken, requireRole('admin'), async (
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
+            });
+        }
+
+        // Prevent admin from changing their own role
+        if (user._id.toString() === req.user.userId.toString()) {
+            return res.status(400).json({
+                success: false,
+                message: 'You cannot change your own role'
             });
         }
 
@@ -411,7 +421,7 @@ router.put('/orders/:id/status', authenticateToken, requireRole('admin'), async 
             });
         }
 
-        const order = await Order.findById(req.params.id);
+        const order = await Order.findById(req.params.id).populate('customerId', 'email');
 
         if (!order) {
             return res.status(404).json({
@@ -420,6 +430,7 @@ router.put('/orders/:id/status', authenticateToken, requireRole('admin'), async 
             });
         }
 
+        const oldStatus = order.orderStatus;
         order.orderStatus = status;
 
         // Update payment status if order is marked as PAID
@@ -437,6 +448,19 @@ router.put('/orders/:id/status', authenticateToken, requireRole('admin'), async 
         }
 
         await order.save();
+
+        // Send delivery email notification if status changed to DELIVERED
+        if (status === 'DELIVERED' && oldStatus !== 'DELIVERED') {
+            try {
+                await sendOrderDeliveredEmail(order.customerId.email, {
+                    orderId: order._id,
+                    shippingInfo: order.shipping
+                });
+                console.log(`✅ Delivery email sent to ${order.customerId.email} for order ${order._id}`);
+            } catch (emailErr) {
+                console.error('❌ Error sending delivery email:', emailErr);
+            }
+        }
 
         res.json({
             success: true,
